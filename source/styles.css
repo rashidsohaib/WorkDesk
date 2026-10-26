@@ -474,7 +474,14 @@ mark[data-find].cur { outline: 2px solid var(--accent); }
 .palette button[aria-pressed="true"] { border-color: var(--text); box-shadow: 0 0 0 2px var(--panel) inset; }
 .settingsrow.stack { flex-direction: column; align-items: flex-start; }
 body.tinted header, body.tinted .spacebar { background: var(--chrome-bg); color: var(--chrome-fg); border-color: transparent; }
-body.tinted header .brand small, body.tinted header .syncpill { color: var(--chrome-fg); opacity: .85; }
+body.tinted header .brand small { color: var(--chrome-fg); opacity: .85; }
+/* the search box and the sync pill keep their own light/dark surface, so their text keeps the normal text colour */
+body.tinted header .syncpill { color: var(--text); opacity: 1; }
+body.tinted header .search { color: var(--text); }
+body.tinted header .search input { color: var(--text); }
+body.tinted header .search input::placeholder { color: var(--muted); opacity: 1; }
+body.tinted header .search .ic { color: var(--muted); }
+body.tinted header .search .iconbtn.flat { color: var(--muted); }
 body.tinted header .brand span { color: var(--chrome-fg); }
 body.tinted .spaceitem:hover { background: #ffffff26; }
 body.tinted .spaceitem.active { background: #ffffff38; color: var(--chrome-fg); }

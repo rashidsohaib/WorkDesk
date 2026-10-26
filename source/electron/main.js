@@ -223,7 +223,7 @@ async function start() {
 
   const b = loadBounds();
   win = new BaseWindow({ width: b.width || 1360, height: b.height || 860, x: b.x, y: b.y, minWidth: 900, minHeight: 560, frame: false, show: false, backgroundColor: '#f4f6fb', title: 'WorkDesk — Design By Rashid', icon: path.join(__dirname, 'icon.png') });
-  ui = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, spellcheck: true } });
+  ui = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, spellcheck: true, backgroundThrottling: false } });
   win.contentView.addChildView(ui);
   const uc = ui.webContents;
   uc.setZoomFactor(1);

@@ -160,15 +160,36 @@ function applyComposeDefaults() {
 }
 
 let mailTimer = null;
+let autoChecking = false;
+// Background check for new mail: re-syncs the open folder and the Inbox, whatever else is going on.
+async function autoCheckMail() {
+  if (!state.account || autoChecking || document.querySelector('.modalback.show')) return;
+  autoChecking = true;
+  try {
+    const inbox = state.folders.find(f => f.role === 'inbox')?.name || 'INBOX';
+    let changed = false, fresh = 0;
+    for (const folder of [...new Set([inbox, state.folder])]) {
+      const r = await call('sync_folder_now', { username: state.account, folder });
+      if (r && (r.added || r.removed || r.flagsChanged)) changed = true;
+      if (folder === inbox) fresh += (r && r.added) || 0;
+    }
+    if (changed) {
+      await reloadFolders();
+      if (state.view === 'mail' && !state.query && !state.selected.size) await loadList();
+    }
+    if (fresh > 0) toast(fresh === 1 ? '1 new message in your Inbox' : fresh + ' new messages in your Inbox');
+    if (!state.syncing) setSync('', 'Up to date');
+  } catch (e) {
+    console.warn('automatic mail check failed', e);
+    if (!state.syncing) setSync('err', 'Check failed — will retry');
+  } finally { autoChecking = false; }
+}
 function scheduleMailCheck() {
   clearInterval(mailTimer);
   mailTimer = null;
   const m = Number(state.prefs.check_minutes ?? 5);
   if (!(m > 0) || !isDesktop) return;
-  mailTimer = setInterval(() => {
-    if (!state.account || state.syncing || document.querySelector('.modalback.show')) return;
-    call('start_sync', { username: state.account, priority: state.folder }).catch(() => {});
-  }, m * 60000);
+  mailTimer = setInterval(autoCheckMail, m * 60000);
 }
 
 async function savePrefs() {
@@ -638,7 +659,8 @@ async function syncCurrent(manual) {
   if (!state.account) return;
   try {
     if (manual) setSync('busy', 'Syncing…');
-    await call('sync_folder_now', { username: state.account, folder: state.folder });
+    const out = await call('sync_folder_now', { username: state.account, folder: state.folder });
+    if (out && out.inProgress === false) state.syncing = false;
     await reloadFolders();
     if (!state.query) await loadList(); else if (manual) { await loadList(true); }
     if (manual) setSync('', 'Up to date');

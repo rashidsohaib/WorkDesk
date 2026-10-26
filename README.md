@@ -1,5 +1,3 @@
-WorkDesk Chrome v2.1 · Design By Rashid
-
 # WorkDesk Chrome
 
 **Your mail and your web apps in one window.**
@@ -8,7 +6,7 @@ WorkDesk Chrome is a Gmail desktop client for Linux. It keeps your mailbox, a no
 
 Mail is read and sent over IMAP/SMTP with a Google App Password, and headers are cached locally, so folders open instantly. Websites run in a real Chromium engine, so Google sign-in, Meet and WhatsApp calls work as they do in Chrome.
 
-*Version 2.1 · Design By Rashid · all screenshots below use fictional sample mail.*
+*Version 2.2 · Design By Rashid · all screenshots below use fictional sample mail.*
 
 ![WorkDesk Chrome: the inbox](screenshots/01-inbox.png)
 
@@ -70,8 +68,8 @@ Light and dark themes, a theme colour of your choice (optionally also tinting th
 
 1. **Run it.** Make the AppImage executable and start it:
    ```
-   chmod +x WorkDesk-Chrome-v2.1-x86_64.AppImage
-   ./WorkDesk-Chrome-v2.1-x86_64.AppImage
+   chmod +x WorkDesk-Chrome-v2.2-x86_64.AppImage
+   ./WorkDesk-Chrome-v2.2-x86_64.AppImage
    ```
 2. **Create a Google App Password** (needed because WorkDesk uses IMAP/SMTP): turn on 2-Step Verification for your Google account, open *Google Account → Security → App passwords*, create one named "WorkDesk" and copy the 16 letters.
 3. **Connect.** In WorkDesk choose *Settings → Account → Configure*, enter your Gmail address and the App Password. It is stored in your system keyring, not in a file. Headers start downloading right away.
@@ -105,4 +103,4 @@ Light and dark themes, a theme colour of your choice (optionally also tinting th
 * **Reporting a problem:** send the log file and a screenshot.
 
 ---
-WorkDesk Chrome v2.1 · Design By Rashid
+WorkDesk Chrome v2.2 · Design By Rashid
