@@ -1,0 +1,18 @@
+{
+  "name": "workdesk-chrome",
+  "private": true,
+  "version": "1.0.4",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "check:js": "node --check main.js && node --check bridge.js && node --check util.js && node --check editor.js && node --check icons.js && node --check sanitize.js",
+    "backend": "cargo build --release --manifest-path backend/Cargo.toml"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^3.11.174"
+  }
+}
