@@ -1,1 +1,0 @@
-{ "name": "workdesk-chrome", "productName": "WorkDesk Chrome", "version": "2.3.0", "main": "main.js", "private": true, "description": "WorkDesk Chrome: Gmail client with website tabs, on a Chromium window" }
