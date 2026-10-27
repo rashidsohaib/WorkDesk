@@ -104,6 +104,33 @@ const ICONS = {
   signature: 'M3 17l4-9 3 6 2-3 3 6 M3 21h18',
   paragraph: 'M9 4h10 M15 4v16 M9 4a4.5 4.5 0 0 0 0 9h6',
 
+  cursor: 'M5 3l14 8-6 2 3 7-3 1-3-7-5 4z',
+  pen: 'M4 20l1-5L16 4l4 4L9 19z M14 6l4 4 M4 20h5',
+  textbox: 'M5 5h14 M12 5v14 M9 19h6',
+  // more bookmark symbols (general and social)
+  chat: 'M4 5h16v11H9l-5 4z M8 9h8 M8 12h5',
+  camera: 'M3 7h4l2-3h6l2 3h4v13H3z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8',
+  play: 'M5 4l14 8-14 8z',
+  music: 'M9 18V5l11-2v13 M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0 M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
+  heart: 'M12 21l-8-8a5 5 0 0 1 8-6 5 5 0 0 1 8 6z',
+  thumbsup: 'M7 11v9H3v-9z M7 11l4-8a2 2 0 0 1 2 2v4h6l-2 11H7',
+  share: 'M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M8.6 13.5l6.8 4 M15.4 6.5l-6.8 4',
+  users: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M2 21v-1a6 6 0 0 1 14 0v1 M17 11a3 3 0 1 0 0-6 M22 21v-1a5 5 0 0 0-4-5',
+  megaphone: 'M3 10v4h4l8 5V5l-8 5z M18 9a4 4 0 0 1 0 6',
+  hash: 'M5 9h15 M4 15h15 M10 3L8 21 M16 3l-2 18',
+  atsign: 'M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7',
+  news: 'M4 4h13v16H4z M17 8h4v10a2 2 0 0 1-4 0 M7 8h7 M7 12h7 M7 16h4',
+  cart: 'M3 4h3l2 12h11l2-9H7 M10 20h.01 M18 20h.01',
+  book: 'M4 4h7a3 3 0 0 1 3 3v14a2 2 0 0 0-2-2H4z M20 4h-6a3 3 0 0 0-3 3',
+  cloud: 'M7 18a4 4 0 0 1 0-8 5 5 0 0 1 10 1 3.5 3.5 0 0 1 0 7z',
+  bell: 'M6 16V10a6 6 0 0 1 12 0v6l2 2H4z M10 21h4',
+  phone: 'M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2',
+  lock: 'M6 11h12v10H6z M8 11V7a4 4 0 0 1 8 0v4',
+  gamepad: 'M6 8h12a4 4 0 0 1 4 4v3a3 3 0 0 1-5 2l-2-2H9l-2 2a3 3 0 0 1-5-2v-3a4 4 0 0 1 4-4 M7 12v3 M5.5 13.5h3 M16 12h.01 M18 14h.01',
+  map: 'M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5',
+  bulb: 'M9 18h6 M10 21h4 M12 3a6 6 0 0 0-4 10c1 1 1 2 1 3h6c0-1 0-2 1-3a6 6 0 0 0-4-10',
+  rocket: 'M5 19c0-3 1-4 3-4l-3-3c2-6 8-9 15-9 0 7-3 13-9 15l-3-3c0 2-1 4-4 4z M14 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3',
+
   // bookmark / pin symbols
   calendar: 'M3 5h18v16H3z M3 10h18 M8 3v4 M16 3v4',
   note: 'M5 3h14v18H5z M9 8h6 M9 12h6 M9 16h4',
@@ -115,13 +142,14 @@ const ICONS = {
   tools: 'M15 3a5 5 0 0 0-4 6L3 17l4 4 8-8a5 5 0 0 0 6-4l-3 3-3-1-1-3z',
 };
 
-export const BOOKMARK_ICONS = ['globe', 'calendar', 'folder', 'note', 'briefcase', 'home', 'chart', 'wallet', 'tools', 'star', 'link', 'mail', 'puzzle'];
+export const BOOKMARK_ICONS = ['globe', 'calendar', 'folder', 'note', 'briefcase', 'home', 'chart', 'wallet', 'tools', 'star', 'link', 'mail', 'puzzle', 'chat', 'phone', 'video', 'camera', 'image', 'music', 'play', 'heart', 'thumbsup', 'share', 'users', 'megaphone', 'hash', 'atsign', 'news', 'book', 'cart', 'cloud', 'bell', 'lock', 'gamepad', 'map', 'bulb', 'rocket'];
 
 // Bookmarks saved by earlier versions stored an emoji; map them to the nearest symbol.
 const LEGACY = { '🌐': 'globe', '📅': 'calendar', '📁': 'folder', '📝': 'note', '💼': 'briefcase', '🏠': 'home', '📊': 'chart', '💰': 'wallet', '🛠️': 'tools', '⭐': 'star', '🔗': 'link' };
-export const bookmarkIcon = v => (ICONS[v] ? v : LEGACY[v] || 'globe');
+export const bookmarkIcon = v => (typeof v === 'string' && v.startsWith('data:image/') ? v : ICONS[v] ? v : LEGACY[v] || 'globe');
 
 export function icon(name, cls = '') {
+  if (typeof name === 'string' && name.startsWith('data:image/')) return `<img class="ic favicon ${cls}" src="${name}" alt="" draggable="false">`;
   const def = ICONS[name] || ICONS.more;
   const [stroke, fill] = def.split('|');
   return `<svg class="ic ${cls}" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="${stroke}"/>${fill ? `<path class="solid" d="${fill}"/>` : ''}</svg>`;

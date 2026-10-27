@@ -64,6 +64,13 @@ Light and dark themes, a theme colour of your choice (optionally also tinting th
 
 ---
 
+## New in v2.3
+
+* **PDF Preview with marking:** draw, highlight, add text, place a scanned signature, print, and save a copy with your marks (the original is never changed). See `screenshots/pdf-annotate.png`.
+* **Colour menus in the editors** (text and highlight colour) open and apply correctly. See `screenshots/compose-colours.png`.
+* **More bookmark icons** plus a "Site icon" option. See `screenshots/bookmark-icons.png`.
+* **Name bubbles** on the left rail icons. See `screenshots/rail-bubble.png`.
+
 ## Getting started
 
 1. **Run it.** Make the AppImage executable and start it:

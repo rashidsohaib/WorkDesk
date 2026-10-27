@@ -1,106 +1,73 @@
-# WorkDesk Chrome
+# WorkDesk Chrome — Design By Rashid  (v1.0.4)
 
-**Your mail and your web apps in one window.**
+WorkDesk Chrome is the fork of WorkDesk v1.0 whose whole user interface runs in a **kiosk-mode Chrome** instead of the embedded WebKitGTK view. Every feature of WorkDesk v1.0 is kept and the UI/UX is unchanged; the difference is that websites (WhatsApp Web, Google Meet, Calendar, any bookmark) now run in a genuine Chrome engine, so WebRTC, camera, microphone and calls work.
 
-WorkDesk Chrome is a Gmail desktop client for Linux. It keeps your mailbox, a notepad and the websites you rely on every day (Google Calendar, Google Meet, WhatsApp Web, an intranet, a ticketing system …) together as tabs of a single window. Click a tab to switch. Nothing opens in another window, so there is nothing to alt-tab between.
+## How it works
 
-Mail is read and sent over IMAP/SMTP with a Google App Password, and headers are cached locally, so folders open instantly. Websites run in a real Chromium engine, so Google sign-in, Meet and WhatsApp calls work as they do in Chrome.
+* `backend/` — one Rust executable (no Tauri, no WebKit). It contains all the v1.0 mail logic (IMAP header cache, Gmail search, SMTP, drafts, scheduling, contacts, Notepad storage, preferences, keyring) and
+  * a tiny local web server on `127.0.0.1` (random port, secret token, cookie) that serves the embedded frontend, answers `/rpc/<command>` calls and streams events (`/events`);
+  * a launcher that starts Chrome with `--kiosk --new-window <local page>` and a **dedicated profile** (`~/.local/share/com.workdesk.app/chrome-profile`), then drives it through the Chrome DevTools Protocol.
+* Frontend (`index.html`, `main.js`, …) is the v1.0 frontend. Only `bridge.js` is new: it replaces the Tauri `invoke` / `listen` / window calls.
+* **Default: every website is a real Chrome tab in the same Chrome window**, right next to the WorkDesk tab in Chrome's own tab strip (WorkDesk's tab strip lists them too, and clicking a pinned URL switches to its Chrome tab). One window, full compatibility: WhatsApp, Meet and Google sign-in behave as in a normal Chrome, so calls work. Camera, microphone, notifications and screen-share are pre-granted for the sites you open.
+* Optional: Settings → **Website tabs** (or the *Open in* choice of each bookmark) can show a site *inside the WorkDesk page* under WorkDesk's own tab strip instead. This is done by framing the site and removing its anti-framing headers over the DevTools Protocol. It works for many sites, but Google, WhatsApp and others that need their own sign-in cookies often refuse to run in a frame, so it is opt-in.
+* Settings → **Window mode**: *Normal window* (default; Chrome's tab strip is visible) or *Kiosk* (full screen, no browser frame; websites are then reached through a hover bar at the top edge).
+* Pop-ups and `target=_blank` pages opened by a site become additional website tabs.
+* "Open in Chrome" buttons (Chrome settings, extension pages) open a new tab inside the same window.
 
-*Version 2.2 · Design By Rashid · all screenshots below use fictional sample mail.*
+## What you need on the computer
 
-![WorkDesk Chrome: the inbox](screenshots/01-inbox.png)
+* Google Chrome (recommended) or Chromium / Brave / Edge. WorkDesk Chrome finds it automatically (Settings → "Browser" can force one).
+* Linux x86-64 with glibc 2.39 or newer (Debian 13 / Q4OS Trixie is fine) for the prebuilt AppImage.
 
----
+## Run
 
-## Key features
+```bash
+chmod +x WorkDesk-Chrome-v1.0.4-x86_64.AppImage
+./WorkDesk-Chrome-v1.0.4-x86_64.AppImage
+```
 
-### One window, many tabs
-Mail, every opened conversation, every message you are writing, the Notepad and each website are tabs in one strip along the top. Pin a website and it gets a button in the left rail and an entry in the sidebar. One click opens it as a tab; switching tabs does not reload it.
+Starting it a second time simply brings the running window to the front. Closing the WorkDesk window (the ✕ in the header) closes Chrome and ends the program.
 
-![A website in a WorkDesk tab, next to mail tabs](screenshots/04-website-tab.png)
+`WORKDESK_WINDOW=kiosk` or `=window` forces the window mode for one run.
 
-* Websites are full Chromium pages, with their own saved sign-in. Sign in to Google or WhatsApp once and it is remembered.
-* Camera, microphone, notifications and screen sharing are allowed for the sites you open, so Meet and WhatsApp calls work. *Settings → Calls → Check this computer* shows what is available.
-* Links that open "in a new window" (and links inside mail messages) open as a new WorkDesk tab instead.
-* Back, forward, reload and an address box sit above every website tab. Downloads go to your Downloads folder.
-* Right-click in a page for copy, paste and "open link in a new tab".
+## Build from source
 
-### Fast Gmail over IMAP/SMTP
-Message headers are downloaded once into a local database, then kept up to date in the background (default every 5 minutes, adjustable). Folders, labels and search results open at once, even for large mailboxes. Your Gmail labels appear as folders; Starred, Sent, Drafts, All Mail, Spam and Trash are built in.
+```bash
+sudo apt install -y build-essential pkg-config libssl-dev curl file
+# Node 20+ and Rust stable
+./build.sh          # npm install, frontend build, cargo build --release, AppImage
+```
 
-### Conversation view
-Messages of the same Gmail thread are grouped into one row with a message count, in every folder. Open it to read the whole conversation, each message in its own card. Switch grouping off in Settings if you prefer one row per message.
+Manual steps: `npm install && npm run build && cargo build --release --manifest-path backend/Cargo.toml`. The frontend in `dist/` is embedded into the binary at compile time, so build the frontend first. Binary: `backend/target/release/workdesk-chrome`.
 
-![A conversation](screenshots/02-thread.png)
+## Data locations (same as v1.0 — your existing data is picked up automatically)
 
-### Search across everything
-The search box looks in All Mail, Trash and Spam, not just the current folder, and understands Gmail-style terms such as `from:priya` or `has:attachment`. Results show which folder each hit lives in.
+* Mail header cache, notes, scheduled mail: `~/.local/share/com.workdesk.app/`
+* Preferences: `~/.config/com.workdesk.app/preferences.json`
+* App Password: OS keyring, service `com.workdesk.app`
+* Notepad backup: `~/Downloads/WorkDesk Notes/workdesk-notes-backup.json` (+ `.json.bak`)
+* Chrome profile (sites' logins, cookies, extensions): `~/.local/share/com.workdesk.app/chrome-profile/`
 
-![Search results](screenshots/08-search.png)
+## Things that differ from v1.0 — please read
 
-### A full rich-text composer
-Write in a proper editor: fonts, sizes, colours, lists, quotes, links, images, tables and alignment, plus an HTML source view. Replies and forwards quote the original and add your signature automatically.
-
-![Writing a reply](screenshots/03-compose.png)
-
-* **Schedule send**: choose a time and WorkDesk sends it while it is running.
-* **Drafts** are saved to Gmail, so they appear on your phone too.
-* **Signatures** per account, **Send-as aliases**, Cc/Bcc, attachments.
-* **Undo** window after archive, trash and spam (off, 5, 10 or 15 seconds).
-
-### Attachments and privacy
-Attachments can be previewed (PDF and images) or saved. Remote images in messages are blocked by default, because they tell the sender you opened the message. You can allow them in Settings. Message HTML is sanitised before it is shown.
-
-### Notepad
-A built-in notepad with several notes, rich text, search, adjustable text size, and export as Markdown. Notes are saved automatically on your computer and backed up to `~/Downloads/WorkDesk Notes/`.
-
-![The Notepad](screenshots/05-notepad.png)
-
-### Make it yours
-Light and dark themes, a theme colour of your choice (optionally also tinting the header and rail), selectable list columns, page size, default compose font, and a collapsible folder pane.
-
-![Dark theme](screenshots/07-dark.png)
-![Settings](screenshots/06-settings.png)
-
----
-
-## Getting started
-
-1. **Run it.** Make the AppImage executable and start it:
-   ```
-   chmod +x WorkDesk-Chrome-v2.2-x86_64.AppImage
-   ./WorkDesk-Chrome-v2.2-x86_64.AppImage
-   ```
-2. **Create a Google App Password** (needed because WorkDesk uses IMAP/SMTP): turn on 2-Step Verification for your Google account, open *Google Account → Security → App passwords*, create one named "WorkDesk" and copy the 16 letters.
-3. **Connect.** In WorkDesk choose *Settings → Account → Configure*, enter your Gmail address and the App Password. It is stored in your system keyring, not in a file. Headers start downloading right away.
-4. **Pin your websites.** Click **+** in the left rail (or *Settings → Bookmarks*), enter a title and address, tick *Pin to the left rail*. Add Google Calendar, Google Meet, WhatsApp Web or any other address.
-
-## Requirements
-* Linux x86-64 (64-bit) with glibc 2.39 or newer, a desktop with a graphical session (X11 or Wayland)
-* `libfuse2` for AppImages (or run with `--appimage-extract-and-run`)
-* A Gmail or Google Workspace account with 2-Step Verification, and an App Password
-
-## Where things are stored
-| What | Where |
-|---|---|
-| Header cache | `~/.local/share/com.workdesk.app/headers.sqlite` |
-| Preferences, bookmarks, signatures | `~/.config/com.workdesk.app/preferences.json` |
-| App Password | your system keyring (service `com.workdesk.app`) |
-| Notes | `~/.local/share/com.workdesk.app/notes.json`, backup in `~/Downloads/WorkDesk Notes/` |
-| Website sign-ins | `~/.config/WorkDesk Chrome/` |
-| Log | `~/.local/share/com.workdesk.app/workdesk-chrome.log` |
-
-## Good to know
-* Chrome extensions do not run inside WorkDesk.
-* A site that needs a pop-up connected back to the page that opened it (some "Sign in with …" buttons) gets the pop-up as a tab, which may not work for that one flow. Signing in on Google's own pages works.
-* Scheduled messages and background mail checks run only while WorkDesk is open.
-* Menus and messages that pop up over a website tab are shown when you return to a mail or notes tab. Dialogs temporarily hide the website tab.
+1. **Separate Chrome profile.** Chrome refuses remote control of your everyday profile, so WorkDesk Chrome uses its own. Sign in to WhatsApp (scan the QR code once), Google, etc. inside WorkDesk Chrome; they are remembered afterwards. Chrome extensions must be installed inside this profile (open the Chrome Web Store as a bookmark and install them there); pinned extension buttons then open in a new tab as before.
+2. Inside Chrome's tab strip you see two layers of tabs: Chrome's (WorkDesk, Calendar, WhatsApp …) and WorkDesk's own (Mail, message tabs, Notepad). Website tabs appear in both.
+3. **Window buttons** (minimise / maximise / close) ask Chrome to change the window state. In kiosk mode some window managers ignore minimise; use *Normal window* mode if yours does.
+4. Google may be stricter about sign-in in an automation-controlled Chrome. If a Google login page refuses, sign in once with *Window mode → Normal window*, or use an App-Password-free site such as WhatsApp first.
 
 ## Troubleshooting
-* **Nothing happens when I start it:** run it from a terminal to see messages, and check the log file above.
-* **Mail does not connect:** check IMAP is on (*Gmail → Settings → Forwarding and POP/IMAP*) and that you used an App Password, not your normal password.
-* **No camera or microphone in a call:** open *Settings → Calls → Check this computer*, then allow access in your desktop's privacy settings.
-* **Reporting a problem:** send the log file and a screenshot.
 
----
-WorkDesk Chrome v2.2 · Design By Rashid
+* If WorkDesk cannot start or attach to Chrome, it shows the exact reason in a red message and writes a log to `~/.local/share/com.workdesk.app/workdesk-chrome.log` (Chrome's own error output is included). Send me that file if the problem persists.
+* WorkDesk tries every Chrome / Chromium / Brave / Edge it can find (including Flatpak and Snap installs, each with a profile inside its own sandbox folder) until one starts. Settings → Browser can put a specific one first.
+* Test from a terminal: `WORKDESK_WINDOW=window ./WorkDesk-Chrome-v1.0.4-x86_64.AppImage`.
+
+## Fall-back
+
+WorkDesk v1.0 (the WebKit/Tauri build) is kept unchanged in the `WorkDesk-v1.0` folder delivered alongside this one.
+
+## Tests run on this source
+
+* `cargo check` / release build; JavaScript syntax check; Vite build.
+* UI regression suite from v1.0 against the new frontend (86 checks pass; two known harness-only noise items).
+* Integration test with a real Chromium under Xvfb: local server, cookie/token, RPC round-trips, Notepad storage, DevTools control (open / navigate / back / forward / close site tabs, popup adoption, hover bar → Home, `chrome://` tabs, window state), WebRTC present in website tabs (`RTCPeerConnection`, `getUserMedia`, `RTCRtpSender.getCapabilities`).
+* **Not tested here:** live Gmail IMAP/SMTP, WhatsApp / Meet calls against the real services, a physical camera / microphone, Google Chrome stable (Chromium 141 was used), and a real desktop window manager.

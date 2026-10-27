@@ -5,8 +5,8 @@ const T = window.__TAURI_INTERNALS__;
 window.__WORKDESK__ = true;
 // Inside the WorkDesk Chrome shell (Electron) the website tabs and window buttons are handled by the shell itself.
 const E = window.wdElectron;
-const SHELL_CMDS = new Set(['site_open', 'site_show', 'site_close', 'site_action', 'site_state', 'site_probe', 'site_layout', 'win_action', 'app_info', 'webrtc_support']);
-const SHELL_EVENTS = new Set(['site-state', 'goto', 'site-new', 'site-closed', 'open-url', 'site-download']);
+const SHELL_CMDS = new Set(['site_open', 'site_show', 'site_close', 'site_action', 'site_state', 'site_probe', 'site_layout', 'win_action', 'app_info', 'webrtc_support', 'print_page', 'fetch_favicon']);
+const SHELL_EVENTS = new Set(['site-state', 'goto', 'site-new', 'site-closed', 'open-url', 'site-download', 'site-favicon']);
 
 export async function invoke(cmd, args = {}) {
   if (T) return T.invoke(cmd, args);

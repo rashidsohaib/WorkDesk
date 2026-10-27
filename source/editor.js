@@ -189,7 +189,13 @@ export function createRichEditor({ toolbar, editor, form, onChange = () => {}, o
         `<div class="rt-palette">${PALETTE.map(c => `<button type="button" class="rt-chip" data-c="${c}" style="background:${c}" title="${c}" aria-label="${c}"></button>`).join('')}</div>` +
         `<div class="rt-pop-row"><button type="button" class="rt-pop-btn" data-none="1">${cmd === 'foreColor' ? 'Automatic' : 'No highlight'}</button>` +
         `<label class="rt-pop-btn">Custom… <input type="color" value="${current.startsWith('#') ? current : '#000000'}" class="rt-custom"></label></div>`;
-      wrap.append(pop);
+      // The toolbar scrolls sideways, which would clip a popover placed inside it: show it on the page instead.
+      document.body.append(pop);
+      const r = arrow.getBoundingClientRect();
+      pop.style.position = 'fixed';
+      pop.style.top = Math.min(r.bottom + 4, window.innerHeight - 250) + 'px';
+      pop.style.left = Math.max(8, Math.min(r.left - 100, window.innerWidth - 252)) + 'px';
+      pop.style.zIndex = '150';
       pop.addEventListener('mousedown', ev => {
         if (!ev.target.closest('input')) ev.preventDefault();
       });
@@ -215,6 +221,8 @@ export function createRichEditor({ toolbar, editor, form, onChange = () => {}, o
   document.addEventListener('click', e => {
     if (pop && !e.target.closest('.rt-pop')) closePop();
   });
+  window.addEventListener('resize', closePop);
+  window.addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); });
 
   // ------------------------------------------------------------------ toolbar
   let g = newGroup();

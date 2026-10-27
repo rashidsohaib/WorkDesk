@@ -149,11 +149,25 @@
       <div class="dochead">
         <span class="doctitle" id="docTitle">Document</span>
         <span class="docctl" id="docPageInfo"></span>
+        <span class="annbar" id="annBar">
+          <button class="iconbtn flat annbtn" data-tool="select" title="Select, move or resize (Esc)" aria-label="Select"><i data-icon="cursor"></i></button>
+          <button class="iconbtn flat annbtn" data-tool="pen" title="Draw freehand" aria-label="Draw"><i data-icon="pen"></i></button>
+          <button class="iconbtn flat annbtn" data-tool="hl" title="Highlight an area" aria-label="Highlight"><i data-icon="highlight"></i></button>
+          <button class="iconbtn flat annbtn" data-tool="text" title="Add text" aria-label="Add text"><i data-icon="textbox"></i></button>
+          <button class="iconbtn flat annbtn" id="annSign" title="Add your signature" aria-label="Add signature"><i data-icon="signature"></i></button>
+          <input type="color" id="annColor" title="Colour" aria-label="Colour" value="#d93025">
+          <select id="annSize" title="Size" aria-label="Size"></select>
+          <button class="iconbtn flat" id="annUndo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><i data-icon="undo"></i></button>
+          <button class="iconbtn flat" id="annRedo" title="Redo (Ctrl+Y)" aria-label="Redo" disabled><i data-icon="redo"></i></button>
+          <button class="iconbtn flat" id="annDelete" title="Delete the selected mark (Del)" aria-label="Delete the selected mark" disabled><i data-icon="trash"></i></button>
+        </span>
         <button class="iconbtn flat" id="docZoomOut" title="Zoom out" aria-label="Zoom out"><i data-icon="minus"></i></button>
         <span class="docctl" id="docZoomLabel">100%</span>
         <button class="iconbtn flat" id="docZoomIn" title="Zoom in" aria-label="Zoom in"><i data-icon="plus"></i></button>
         <button class="iconbtn flat" id="docFit" title="Fit to width" aria-label="Fit to width"><i data-icon="fit"></i></button>
-        <button class="iconbtn flat" id="docSave" title="Save to Downloads" aria-label="Save to Downloads"><i data-icon="download"></i></button>
+        <button class="iconbtn flat" id="docPrint" title="Print (with your marks)" aria-label="Print"><i data-icon="print"></i></button>
+        <button class="iconbtn flat" id="docSaveAnn" title="Save a copy with your marks" aria-label="Save a copy with your marks" hidden><i data-icon="save"></i></button>
+        <button class="iconbtn flat" id="docSave" title="Save the original to Downloads" aria-label="Save the original to Downloads"><i data-icon="download"></i></button>
       </div>
       <div class="docscroll" id="docScroll"><div class="docpages" id="docPages"></div></div>
     </section>
@@ -240,6 +254,7 @@
   </main>
 </div>
 
+<div id="printDoc" aria-hidden="true"></div>
 <div class="modalback" id="modalback"><div class="modal"><h2 id="modalTitle"></h2><form id="modalForm"><div id="modalFields"></div><div id="modalError" class="error"></div><div class="modalactions"><button type="button" id="cancelModal">Cancel</button><button type="submit" class="primary" id="modalSubmit">Save</button></div></form></div></div>
 <div class="toasts" id="toasts"></div>
 <script type="module" src="/main.js"></script>

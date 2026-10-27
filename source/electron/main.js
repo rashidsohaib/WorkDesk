@@ -1,6 +1,6 @@
 // WorkDesk Chrome v2: the window, the tab-area website pages and the window buttons live here (Chromium via Electron);
 // the mail engine is the Rust backend, started as a child process and used through its local HTTP API.
-const { app, BaseWindow, WebContentsView, ipcMain, session, desktopCapturer, shell, Menu, clipboard, dialog, Notification } = require('electron');
+const { app, BaseWindow, WebContentsView, ipcMain, session, desktopCapturer, shell, Menu, clipboard, dialog, Notification, net } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -57,6 +57,46 @@ function startBackend() {
 }
 
 // ------------------------------------------------------------------ layout
+
+// ------------------------------------------------------------------ site icons / print
+async function grab(u, max, ms = 7000) {
+  const r = await net.fetch(u, { signal: AbortSignal.timeout(ms), redirect: 'follow', headers: { 'User-Agent': cleanUA(session.defaultSession.getUserAgent()) } });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const b = Buffer.from(await r.arrayBuffer());
+  if (b.length > max) throw new Error('too large');
+  return { b, type: (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase() };
+}
+const iconData = (b, type, u) => {
+  let t = type;
+  if (!/^image\//.test(t)) t = /\.svg(\?|$)/i.test(u) ? 'image/svg+xml' : /\.png(\?|$)/i.test(u) ? 'image/png' : /\.ico(\?|$)/i.test(u) ? 'image/x-icon' : '';
+  if (!t || b.length < 20) throw new Error('not an image');
+  return 'data:' + t + ';base64,' + b.toString('base64');
+};
+async function fetchFavicon(pageUrl) {
+  const base = new URL(pageUrl);
+  if (!/^https?:$/.test(base.protocol)) throw new Error('Not a web address');
+  const cands = [];
+  try {
+    const { b } = await grab(base.href, 600000);
+    const html = b.toString('utf8', 0, 200000);
+    for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
+      const tag = m[0];
+      if (!/rel\s*=\s*["'][^"']*icon/i.test(tag)) continue;
+      const h = /href\s*=\s*["']([^"']+)["']/i.exec(tag);
+      if (!h) continue;
+      const sz = /sizes\s*=\s*["'](\d+)/i.exec(tag);
+      try { cands.push({ u: new URL(h[1], base).href, w: sz ? +sz[1] : 0, apple: /apple-touch/i.test(tag) }); } catch { /* skip */ }
+    }
+  } catch { /* fall back to /favicon.ico */ }
+  cands.sort((a, b) => (Math.abs((a.w || 32) - 64) - Math.abs((b.w || 32) - 64)));
+  cands.push({ u: new URL('/favicon.ico', base).href });
+  for (const c of cands.slice(0, 5)) {
+    try { const { b, type } = await grab(c.u, 150000); return iconData(b, type, c.u); } catch { /* next */ }
+  }
+  return '';
+}
+const printUi = () => new Promise((res, rej) => ui.webContents.print({ silent: false, printBackground: true }, (ok, why) => (ok || /cancel/i.test(why || '') ? res(ok) : rej(new Error(why || 'print failed')))));
+
 function layout() {
   if (!win || !ui) return;
   const [w, h] = win.getContentSize();
@@ -107,6 +147,11 @@ function openSite(label, url, ua) {
       showSite(nl);
     }
     return { action: 'deny' };
+  });
+  c.on('page-favicon-updated', async (_e, favs) => {
+    const u = (favs || []).filter(f => /^https?:/i.test(f)).pop();
+    if (!u) return;
+    try { const { b, type } = await grab(u, 150000); emit('site-favicon', { url: c.getURL(), data: iconData(b, type, u) }); } catch { /* keep the generic icon */ }
   });
   c.on('page-title-updated', (_e, t) => { s.title = t; pushState(label); });
   for (const ev of ['did-start-loading', 'did-stop-loading', 'did-navigate', 'did-navigate-in-page']) c.on(ev, () => pushState(label));
@@ -189,6 +234,8 @@ const handlers = {
   },
   app_info: () => ({ chrome: true, version: app.getVersion(), error: '', log: LOG, kiosk: true, failed: false }),
   webrtc_support: () => webrtcLines(),
+  print_page: () => printUi(),
+  fetch_favicon: a => fetchFavicon(String(a.url || '')),
 };
 ipcMain.handle('wd-invoke', async (_e, cmd, args) => {
   const h = handlers[cmd];

@@ -144,10 +144,6 @@ header {
 .spaceitem.active { background: var(--accentbg); color: var(--accent); }
 .spaceitem.pinned { color: var(--text); }
 .spaceitem.pinned.active { color: var(--accent); }
-.spaceitem:hover::after {
-  content: attr(data-tip); position: absolute; left: 46px; top: 50%; transform: translateY(-50%); z-index: 50;
-  background: var(--text); color: var(--panel); padding: 4px 9px; border-radius: 6px; white-space: nowrap; font-size: 12px; pointer-events: none;
-}
 .spacegap { flex: 1; }
 .railfolders { display: none; flex-direction: column; gap: 4px; align-items: center; width: 100%; }
 .app.folder-collapsed .railfolders { display: flex; }
@@ -420,7 +416,35 @@ input[type=checkbox].pick:checked::after { width: 8px; height: 4px; transform: r
 .docctl { color: var(--muted); font-size: 13px; min-width: 48px; text-align: center; }
 .docscroll { flex: 1; min-height: 0; overflow: auto; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
 .docpages { display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: min-content; }
-.docpages canvas { background: #fff; box-shadow: 0 1px 6px #0003; max-width: none; }
+.pdfpage { position: relative; background: #fff; box-shadow: 0 1px 6px #0003; flex: none; }
+.pdfpage canvas { display: block; max-width: none; }
+.pdfpage canvas.ann { position: absolute; inset: 0; touch-action: none; }
+.docpages[data-tool="pen"] .ann, .docpages[data-tool="hl"] .ann, .docpages[data-tool="text"] .ann { cursor: crosshair; }
+.docpages[data-tool="sig"] .ann { cursor: copy; }
+.ann-text { position: absolute; z-index: 5; border: 1.5px dashed #2f6fed; background: #fff8; outline: 0; resize: none; overflow: hidden; padding: 0 2px; margin: 0; white-space: pre; }
+.annbar { display: inline-flex; align-items: center; gap: 2px; padding-right: 8px; margin-right: 4px; border-right: 1px solid var(--line); }
+.annbtn.active { background: var(--accentbg); color: var(--accent); }
+#annColor { width: 26px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; margin: 0 4px; }
+#annSize { height: 28px; padding: 0 4px; font-size: 12.5px; }
+.sigchoice { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+.sigchoice img { height: 44px; max-width: 220px; background: repeating-conic-gradient(#8881 0 25%, transparent 0 50%) 0 0/12px 12px; border-radius: 4px; }
+.sigchoice label { flex: 1; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.sigchoice:has(input:checked) { border-color: var(--accent); background: var(--accentbg); }
+#printDoc { display: none; page: docprint; }
+@page docprint { margin: 0; }
+@media print {
+  body.printing-doc > *:not(#printDoc) { display: none !important; }
+  body.printing-doc #printDoc { display: block !important; }
+  #printDoc img { display: block; width: 100%; height: 100vh; object-fit: contain; page-break-after: always; break-after: page; }
+  #printDoc img:last-child { page-break-after: auto; break-after: auto; }
+}
+.ic.favicon { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
+.sect .ic.favicon, .ic-sm.favicon { width: 18px; height: 18px; }
+.tab .ic.favicon { width: 16px; height: 16px; }
+.siteicon { font-size: 11px; line-height: 1.1; text-align: center; padding: 0 2px; }
+.railtip { position: fixed; z-index: 400; background: #1f2937; color: #fff; padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 500; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 14px #0004; opacity: 0; transform: translateY(-50%) translateX(-4px); transition: opacity .12s, transform .12s; }
+.railtip::before { content: ''; position: absolute; left: -5px; top: 50%; margin-top: -5px; border: 5px solid transparent; border-left: 0; border-right-color: #1f2937; }
+.railtip.on { opacity: 1; transform: translateY(-50%); }
 .docpages img { max-width: none; background: repeating-conic-gradient(#8881 0 25%, transparent 0 50%) 0 0/16px 16px; }
 .fontdefaults { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .inlinefield { display: inline-flex; align-items: center; gap: 8px; }

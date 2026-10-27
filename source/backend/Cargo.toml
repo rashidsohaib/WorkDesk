@@ -1,6 +1,6 @@
 [package]
 name = "workdesk-chrome"
-version = "2.2.0"
+version = "2.3.0"
 description = "WorkDesk Chrome - privacy-first Gmail IMAP/SMTP desktop client that runs in a kiosk-mode Chrome"
 authors = ["Rashid"]
 edition = "2021"

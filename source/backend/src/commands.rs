@@ -85,11 +85,13 @@ fn save_credentials(username: String, app_password: String) -> Result<(), String
     if !u.contains('@') || p.is_empty() {
         return Err("Enter a valid Gmail address and App Password".into());
     }
+    mail::raw_clear();
     keyring::Entry::new(SERVICE, &u).map_err(err)?.set_password(&p).map_err(err)
 }
 
 fn delete_credentials(state: State<'_, AppState>, username: String) -> Result<(), String> {
     let a = acct(&username);
+    mail::raw_clear();
     let _ = keyring::Entry::new(SERVICE, &a).and_then(|e| e.delete_credential());
     let _ = keyring::Entry::new(OLD_SERVICE, &a).and_then(|e| e.delete_credential());
     let _ = state.db.clear_account(&a);
@@ -398,6 +400,11 @@ async fn get_message(state: State<'_, AppState>, username: String, folder: Strin
 }
 
 async fn get_attachment(username: String, folder: String, uid: u32, index: u32) -> Result<AttachmentData, String> {
+    if let Some(raw) = mail::raw_get(&folder, uid) {
+        if let Ok(a) = mail::attachment_from_raw(&raw, index) {
+            return Ok(a);
+        }
+    }
     let mut sess = open_session(&acct(&username))?;
     let r = mail::fetch_attachment(&mut sess, &folder, uid, index);
     finish(sess);

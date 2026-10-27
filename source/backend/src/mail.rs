@@ -116,12 +116,39 @@ fn address_summary(value: &str) -> (String, String) {
     (names.join(", "), emails.join(", "))
 }
 
+// The last few downloaded messages are kept in memory: opening an attachment right after reading the message
+// then needs no second download from Gmail.
+static RAW: std::sync::Mutex<Vec<((String, u32), std::sync::Arc<Vec<u8>>)>> = std::sync::Mutex::new(Vec::new());
+const RAW_MAX_BYTES: usize = 96 * 1024 * 1024;
+
+fn raw_put(folder: &str, uid: u32, raw: &[u8]) {
+    if raw.len() > RAW_MAX_BYTES / 2 {
+        return;
+    }
+    let mut g = RAW.lock().unwrap_or_else(|p| p.into_inner());
+    g.retain(|(k, _)| !(k.0 == folder && k.1 == uid));
+    g.push(((folder.to_string(), uid), std::sync::Arc::new(raw.to_vec())));
+    while g.len() > 8 || g.iter().map(|(_, v)| v.len()).sum::<usize>() > RAW_MAX_BYTES {
+        g.remove(0);
+    }
+}
+
+pub fn raw_get(folder: &str, uid: u32) -> Option<std::sync::Arc<Vec<u8>>> {
+    let g = RAW.lock().unwrap_or_else(|p| p.into_inner());
+    g.iter().find(|(k, _)| k.0 == folder && k.1 == uid).map(|(_, v)| v.clone())
+}
+
+pub fn raw_clear() {
+    RAW.lock().unwrap_or_else(|p| p.into_inner()).clear();
+}
+
 fn full_message(sess: &mut Sess, folder: &str, uid: u32) -> Result<(Vec<u8>, Vec<String>), String> {
     sess.select(folder).map_err(err)?;
     let fetched = sess.uid_fetch(uid.to_string(), "(UID FLAGS BODY.PEEK[])").map_err(err)?;
     let m = fetched.iter().next().ok_or("This message no longer exists on the server")?;
     let body = m.body().ok_or("Gmail did not return the message body")?.to_vec();
     let flags = crate::imapx::normalize_flags(&m.flags().iter().map(|f| f.to_string()).collect::<Vec<_>>());
+    raw_put(folder, uid, &body);
     Ok((body, flags))
 }
 
@@ -165,6 +192,13 @@ pub fn fetch_message(sess: &mut Sess, folder: &str, uid: u32, thread_id: Option<
 }
 
 /// Fetch one attachment (with data) of a message by its index in `MailDetail.attachments`.
+pub fn attachment_from_raw(raw: &[u8], index: u32) -> Result<AttachmentData, String> {
+    let parsed = mailparse::parse_mail(raw).map_err(err)?;
+    let mut w = Walk { text: String::new(), html: String::new(), attachments: Vec::new() };
+    walk(&parsed, &mut w, true);
+    w.attachments.into_iter().find(|a| a.index == index).ok_or_else(|| "Attachment not found".to_string())
+}
+
 pub fn fetch_attachment(sess: &mut Sess, folder: &str, uid: u32, index: u32) -> Result<AttachmentData, String> {
     let (raw, _) = full_message(sess, folder, uid)?;
     let parsed = mailparse::parse_mail(&raw).map_err(err)?;

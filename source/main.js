@@ -2,7 +2,8 @@
 import { invoke, listen, getCurrentWindow } from './bridge.js';
 import { icon, hydrateIcons, setIcon, bookmarkIcon, BOOKMARK_ICONS } from './icons.js';
 import { createRichEditor, FONTS, SIZES } from './editor.js';
-import { renderDoc } from './viewer.js';
+import { renderDoc, tools, setTool, registerSignature, sigImages, undo as annUndo, redo as annRedo, canUndo, canRedo, hasAnnotations, deleteSelected, setColorOfSelection, pagesForPrint } from './viewer.js';
+import { annotatedPdf, prepareSignature } from './annot.js';
 import { createNotepad } from './notes.js';
 import { sanitizeEmailHtml, withInlineImages, sanitizeForEditor } from './sanitize.js';
 import { $, esc, fmtSize, fmtDate, initial, throttle, toast, openModal, closeModal, askForm, confirmBox, onModal } from './util.js';
@@ -28,6 +29,7 @@ const ROLE_ICON = { inbox: 'inbox', starred: 'star', snoozed: 'snooze', importan
 const WIDTH_KEY = 'maildesk-column-widths-v2';
 
 const state = {
+  sigImages: [],
   account: '',
   folders: [],
   folder: 'INBOX',
@@ -108,6 +110,8 @@ async function loadPrefs() {
   state.pageSize = Number(p.page_size || 25);
   const cols = (p.columns || DEFAULT_COLUMNS).filter(k => COLUMNS[k]);
   state.columns = [...new Set(['select', ...cols.filter(k => k !== 'select')])];
+  state.sigImages = Array.isArray(p.signature_images) ? p.signature_images.filter(s => s && s.id && /^data:image\//.test(s.dataUrl || '')) : [];
+  state.sigImages.forEach(s => registerSignature(s.id, s.dataUrl));
   state.bookmarks = (p.bookmarks || []).filter(b => b && b.url).filter(b => !(/^(Google Drive|Google Calendar|Google Keep)$/i.test(String(b.title || '')) && /(drive|calendar|keep)\.google\.com/i.test(String(b.url || ''))));
   state.aliases = p.aliases || [];
   state.signatures = p.signatures || {};
@@ -202,6 +206,7 @@ async function savePrefs() {
     conversations_enabled: state.grouped,
     conversation_default_v5: true,
     bookmarks: state.bookmarks,
+    signature_images: state.sigImages,
     aliases: state.aliases,
     signatures: state.signatures,
     display_name: $('displayName').value,
@@ -360,6 +365,8 @@ function renderTabs() {
 }
 
 // ================================================================== bookmarks
+// A bookmark may use the website's own icon (icon 'site', with the picture kept in `favicon`).
+const bmIcon = b => (b.icon === 'site' && /^data:image\//.test(b.favicon || '') ? b.favicon : bookmarkIcon(b.icon === 'site' ? 'globe' : b.icon));
 function renderPins() {
   const rail = $('pinned');
   rail.innerHTML = '';
@@ -367,9 +374,9 @@ function renderPins() {
     if (!b.pinned) return;
     const el = document.createElement('button');
     el.className = 'spaceitem pinned' + (state.view === 'web' && state.webTabs.find(t => t.id === state.activeWeb)?.url === b.url ? ' active' : '');
-    el.dataset.tip = b.title + ' — right-click to edit';
+    el.dataset.tip = b.title;
     el.setAttribute('aria-label', b.title);
-    el.innerHTML = icon(bookmarkIcon(b.icon));
+    el.innerHTML = icon(bmIcon(b));
     el.onclick = () => openWeb(b);
     el.oncontextmenu = e => { e.preventDefault(); bookmarkModal(i); };
     rail.append(el);
@@ -381,7 +388,7 @@ function renderPins() {
     const el = document.createElement('div');
     el.className = 'nav';
     el.title = b.url;
-    el.innerHTML = `${icon(bookmarkIcon(b.icon), 'ic-sm')}<span class="name">${esc(b.title)}</span>`;
+    el.innerHTML = `${icon(bmIcon(b), 'ic-sm')}<span class="name">${esc(b.title)}</span>`;
     el.onclick = () => openWeb(b);
     el.oncontextmenu = e => { e.preventDefault(); bookmarkModal(i); };
     list.append(el);
@@ -391,8 +398,9 @@ function renderPins() {
 
 async function bookmarkModal(edit = -1) {
   const b = state.bookmarks[edit] || { title: '', url: '', pinned: true, icon: 'globe' };
-  const cur = bookmarkIcon(b.icon);
-  const icons = BOOKMARK_ICONS.map(n => `<label title="${n}"><input type="radio" name="icon" value="${n}" ${n === cur ? 'checked' : ''}>${icon(n)}</label>`).join('');
+  const cur = b.icon === 'site' ? 'site' : bookmarkIcon(b.icon);
+  const siteChip = `<label title="Use the website's own icon"><input type="radio" name="icon" value="site" ${cur === 'site' ? 'checked' : ''}><span class="siteicon">Site<br>icon</span></label>`;
+  const icons = siteChip + BOOKMARK_ICONS.map(n => `<label title="${n}"><input type="radio" name="icon" value="${n}" ${n === cur ? 'checked' : ''}>${icon(n)}</label>`).join('');
   await openModal(
     edit < 0 ? 'Add bookmark' : 'Edit bookmark',
     `<label>Title<input name="title" required value="${esc(b.title)}"></label>
@@ -403,6 +411,11 @@ async function bookmarkModal(edit = -1) {
     async d => {
       if (!/^https?:\/\//i.test(d.url)) throw new Error('The address must start with http:// or https://');
       const item = { title: d.title.trim(), url: d.url.trim(), icon: d.icon || 'globe', pinned: d.pinned === 'yes' };
+      if (item.icon === 'site') {
+        item.favicon = b.url === item.url && b.favicon ? b.favicon : '';
+        if (!item.favicon && isElectron) { try { item.favicon = (await call('fetch_favicon', { url: item.url })) || ''; } catch { /* picked up when the site is opened */ } }
+        if (!item.favicon) toast('The site did not give its icon yet. It is picked up the first time you open the site.', { timeout: 6000 });
+      }
       if (edit < 0) state.bookmarks.push(item); else state.bookmarks[edit] = item;
       await savePrefs();
       renderPins();
@@ -412,7 +425,7 @@ async function bookmarkModal(edit = -1) {
 
 function renderSettingsLists() {
   const row = (ic, title, meta, pinned, attr, i, extra = '') => `<div class="itemrow">${icon(ic)}<div class="meta"><b>${esc(title)}</b><span>${esc(meta)}</span></div>${pinned ? '<span class="pinned-badge">Pinned</span>' : ''}${extra}<button type="button" class="iconbtn" data-${attr}-edit="${i}" title="Modify" aria-label="Modify ${esc(title)}">${icon('compose')}</button><button type="button" class="iconbtn" data-${attr}-del="${i}" title="Remove" aria-label="Remove ${esc(title)}">${icon('trash')}</button></div>`;
-  $('bookmarkSettings').innerHTML = state.bookmarks.map((b, i) => row(bookmarkIcon(b.icon), b.title, b.url, b.pinned, 'bm', i)).join('') || '<div class="sub" style="padding:10px 0">No bookmarks yet.</div>';
+  $('bookmarkSettings').innerHTML = state.bookmarks.map((b, i) => row(bmIcon(b), b.title, b.url, b.pinned, 'bm', i)).join('') || '<div class="sub" style="padding:10px 0">No bookmarks yet.</div>';
 }
 
 $('addBookmarkSettings').onclick = () => bookmarkModal();
@@ -444,7 +457,7 @@ function openWeb(b) {
   if (!tab) {
     let host = url;
     try { host = new URL(url).hostname; } catch { /* keep url */ }
-    tab = { id: 'site-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), url, url0: url, title: b.title || host, fixedTitle: !!b.title, icon: bookmarkIcon(b.icon || 'globe'), opened: false, embed: false, canBack: false, canForward: false, loading: false };
+    tab = { id: 'site-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), url, url0: url, title: b.title || host, fixedTitle: !!b.title, icon: bmIcon(b), opened: false, embed: false, canBack: false, canForward: false, loading: false };
     state.webTabs.push(tab);
   }
   activateWeb(tab.id);
@@ -1179,15 +1192,23 @@ async function activateDoc(d) {
   setView('doc');
   $('docTitle').textContent = d.title;
   $('docSave').hidden = !d.dataBase64;
+  $('annBar').hidden = d.kind !== 'pdf';
+  $('docPageInfo').textContent = '';
+  syncAnnUi();
   await drawDoc();
 }
+const docHooks = {
+  onChange: d => { if (d === state.doc) syncAnnUi(); },
+  onPage: (n, t) => { $('docPageInfo').textContent = t > 1 ? `Page ${n} / ${t}` : ''; },
+  onSelect: () => syncAnnUi(),
+};
 async function drawDoc() {
   const d = state.doc;
   if (!d) return;
-  const r = await renderDoc(d, $('docScroll'), $('docPages'));
+  const r = await renderDoc(d, $('docScroll'), $('docPages'), docHooks);
   if (!r || state.doc !== d) return;
   $('docZoomLabel').textContent = Math.round(d.scale * 100) + '%';
-  $('docPageInfo').textContent = d.kind === 'pdf' ? `${r.pages} page${r.pages === 1 ? '' : 's'}` : '';
+  if (d.kind !== 'pdf') $('docPageInfo').textContent = '';
 }
 function closeDoc(d) {
   const i = state.docs.indexOf(d);
@@ -1204,6 +1225,115 @@ const zoomDoc = f => { const d = state.doc; if (!d) return; d.fit = false; d.sca
 $('docZoomIn').onclick = () => zoomDoc(1.25);
 $('docZoomOut').onclick = () => zoomDoc(0.8);
 $('docFit').onclick = () => { if (state.doc) { state.doc.fit = true; drawDoc(); } };
+
+// ---- PDF marks: pen, highlight, text, signature; print; save a marked copy
+const SIZE_SETS = {
+  pen: [['1.2', 'Fine'], ['2.2', 'Medium'], ['4', 'Thick'], ['7', 'Marker']],
+  text: [['11', '11 pt'], ['14', '14 pt'], ['18', '18 pt'], ['24', '24 pt'], ['32', '32 pt']],
+};
+function syncAnnUi() {
+  const d = state.doc;
+  const t = tools.tool;
+  document.querySelectorAll('.annbtn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
+  $('annSign').classList.toggle('active', t === 'sig');
+  const kind = t === 'pen' ? 'pen' : t === 'text' ? 'text' : null;
+  $('annSize').hidden = !kind;
+  if (kind && $('annSize').dataset.kind !== kind) {
+    $('annSize').dataset.kind = kind;
+    $('annSize').innerHTML = SIZE_SETS[kind].map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  }
+  if (kind) $('annSize').value = String(kind === 'pen' ? tools.width : tools.size);
+  const colorKey = t === 'pen' ? 'ink' : t === 'hl' ? 'hl' : t === 'text' ? 'text' : (d?.sel && d.sel.shape.type !== 'sig' ? ({ ink: 'ink', hl: 'hl', text: 'text' })[d.sel.shape.type] : null);
+  $('annColor').hidden = !colorKey;
+  if (colorKey) $('annColor').value = d?.sel && t === 'select' ? d.sel.shape.color : tools[colorKey];
+  $('annUndo').disabled = !canUndo(d);
+  $('annRedo').disabled = !canRedo(d);
+  $('annDelete').disabled = !d?.sel;
+  $('docSaveAnn').hidden = !(d?.kind === 'pdf' && hasAnnotations(d));
+}
+document.querySelectorAll('.annbtn[data-tool]').forEach(b => b.onclick = () => { setTool(b.dataset.tool); syncAnnUi(); });
+$('annColor').oninput = e => {
+  const d = state.doc, t = tools.tool, v = e.target.value;
+  if (t === 'pen') tools.ink = v; else if (t === 'hl') tools.hl = v; else if (t === 'text') tools.text = v;
+  else if (d?.sel) { setColorOfSelection(d, v); const s = d.sel.shape; if (s.type === 'ink') tools.ink = v; if (s.type === 'hl') tools.hl = v; if (s.type === 'text') tools.text = v; }
+};
+$('annSize').onchange = e => { if (tools.tool === 'pen') tools.width = Number(e.target.value); else tools.size = Number(e.target.value); };
+$('annUndo').onclick = () => state.doc && annUndo(state.doc);
+$('annRedo').onclick = () => state.doc && annRedo(state.doc);
+$('annDelete').onclick = () => state.doc && deleteSelected(state.doc);
+
+async function signatureModal() {
+  const rows = () => state.sigImages.map((s, i) => `<div class="sigchoice"><label><input type="radio" name="sig" value="${esc(s.id)}" ${i === 0 ? 'checked' : ''}><img src="${s.dataUrl}" alt="Signature ${i + 1}"></label><button type="button" class="iconbtn" data-delsig="${esc(s.id)}" title="Remove this signature" aria-label="Remove this signature">${icon('trash')}</button></div>`).join('');
+  const html = () => `${state.sigImages.length ? rows() : '<p class="sub">No signature saved yet. Add a photo or scan of your signature: a picture of your signature on white paper works best.</p>'}
+    <label>Add a scanned signature<input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+    <label class="inline"><input type="checkbox" name="clean" value="1" checked> Remove the paper background</label>
+    <span class="sub">The signature is kept on this computer and can be placed on any PDF. Click on the page to put it, then drag it to move it, or drag its corner to resize.</span>`;
+  const done = openModal('Signature', html(), 'Place on the page', async d => {
+    let chosen = d.sig;
+    const f = d.file;
+    if (f && f.size > 0) {
+      if (f.size > 12e6) throw new Error('That picture is too large (limit 12 MB).');
+      const { dataUrl, ratio } = await prepareSignature(f, d.clean === '1');
+      const s = { id: 'sig-' + Date.now().toString(36), dataUrl, ratio };
+      state.sigImages.unshift(s);
+      state.sigImages = state.sigImages.slice(0, 8);
+      await registerSignature(s.id, dataUrl);
+      await savePrefs();
+      chosen = s.id;
+    }
+    const s = state.sigImages.find(x => x.id === chosen);
+    if (!s) throw new Error('Choose a signature, or add a picture of yours.');
+    tools.pendingSig = { id: s.id, ratio: s.ratio };
+    setTool('sig'); syncAnnUi();
+    toast('Click on the page where the signature goes.', { timeout: 5000 });
+  });
+  $('modalFields').onclick = async e => {
+    const del = e.target.closest('[data-delsig]');
+    if (!del) return;
+    state.sigImages = state.sigImages.filter(s => s.id !== del.dataset.delsig);
+    delete sigImages[del.dataset.delsig];
+    await savePrefs();
+    $('modalFields').innerHTML = html();
+  };
+  await done;
+}
+$('annSign').onclick = () => { if (state.doc?.kind === 'pdf') signatureModal(); };
+
+async function printPage() {
+  if (isElectron) await call('print_page'); else window.print();
+}
+async function printDoc() {
+  const d = state.doc;
+  if (!d) return;
+  const host = $('printDoc');
+  let urls = [];
+  try {
+    toast('Preparing to print…', { timeout: 2500 });
+    urls = await pagesForPrint(d, 150);
+    host.innerHTML = '';
+    urls.forEach(u => { const im = new Image(); im.src = u; host.append(im); });
+    await Promise.all([...host.children].map(i => i.decode().catch(() => {})));
+    document.body.classList.add('printing-doc');
+    await printPage();
+  } catch (e) { toast('Could not print: ' + String(e?.message || e), { error: true }); }
+  finally {
+    document.body.classList.remove('printing-doc');
+    host.innerHTML = '';
+    urls.forEach(u => u.startsWith('blob:') && URL.revokeObjectURL(u));
+  }
+}
+$('docPrint').onclick = printDoc;
+const bytesToB64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
+$('docSaveAnn').onclick = async () => {
+  const d = state.doc;
+  if (!d?.pdf || !d.dataBase64) return;
+  try {
+    const orig = Uint8Array.from(atob(d.dataBase64), c => c.charCodeAt(0));
+    const out = await annotatedPdf(orig, d.pdf, d.ann, sigImages);
+    const name = (d.filename || 'document.pdf').replace(/\.pdf$/i, '') + ' (marked).pdf';
+    toast('Saved to ' + await call('save_attachment', { filename: name, dataBase64: bytesToB64(out) }));
+  } catch (e) { toast('Could not save the marked copy: ' + String(e?.message || e), { error: true }); }
+};
 $('docSave').onclick = async () => {
   const d = state.doc;
   if (!d?.dataBase64) return;
@@ -1225,7 +1355,7 @@ $('tStar').onclick = () => { const t = state.thread; if (!t) return; toggleStar(
 $('tReply').onclick = () => state.thread && replyTo(state.thread.rows.at(-1), false);
 $('tReplyAll').onclick = () => state.thread && replyTo(state.thread.rows.at(-1), true);
 $('tForward').onclick = () => state.thread && forwardOf(state.thread.rows.at(-1));
-$('tPrint').onclick = () => window.print();
+$('tPrint').onclick = () => printPage().catch(e => toast('Could not print: ' + String(e?.message || e), { error: true }));
 $('tExpand').onclick = () => {
   const t = state.thread; if (!t) return;
   t.allOpen = !t.allOpen;
@@ -1908,6 +2038,17 @@ async function start() {
   await listen('site-state', e => onSiteState(e.payload));
   await listen('goto', e => onGoto(e.payload));
   await listen('site-new', e => onSiteNew(e.payload));
+  await listen('site-favicon', e => {
+    const p = e.payload || {};
+    let origin = '';
+    try { origin = new URL(p.url).origin; } catch { return; }
+    let changed = false;
+    for (const b of state.bookmarks) {
+      let bo = ''; try { bo = new URL(b.url).origin; } catch { continue; }
+      if (b.icon === 'site' && bo === origin && p.data && b.favicon !== p.data) { b.favicon = p.data; changed = true; }
+    }
+    if (changed) { savePrefs().catch(() => {}); renderPins(); }
+  });
   await listen('open-url', e => { if (e.payload?.url) openWeb({ url: e.payload.url, title: '' }); });
   await listen('site-download', e => { const p = e.payload || {}; toast(p.ok ? 'Downloaded ' + p.name + ' to your Downloads folder' : 'Download failed: ' + (p.name || ''), { error: !p.ok }); });
   await listen('site-closed', e => { const t = state.webTabs.find(x => labelOf(x.id) === e.payload?.label); if (t) { t.opened = false; closeWeb(t.id); } });
@@ -1925,3 +2066,28 @@ async function start() {
   if (state.account) connect(); else { setSync('off', 'Not connected'); renderList(); }
 }
 start().catch(e => { console.error(e); toast('Start-up problem: ' + String(e?.message || e), { error: true, timeout: 0 }); });
+
+
+// ---- name bubble for the icons on the left rail
+(() => {
+  const tip = document.createElement('div');
+  tip.className = 'railtip';
+  document.body.append(tip);
+  let timer = null;
+  const hide = () => { clearTimeout(timer); tip.classList.remove('on'); };
+  document.addEventListener('mouseover', e => {
+    const t = e.target.closest?.('.spacebar [data-tip]');
+    if (!t) return hide();
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      tip.textContent = t.dataset.tip;
+      const r = t.getBoundingClientRect();
+      tip.style.left = Math.round(r.right + 10) + 'px';
+      tip.style.top = Math.round(r.top + r.height / 2) + 'px';
+      tip.classList.add('on');
+    }, 120);
+  });
+  document.addEventListener('mouseleave', hide);
+  document.addEventListener('mousedown', hide);
+  document.addEventListener('scroll', hide, true);
+})();
