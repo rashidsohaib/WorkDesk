@@ -1,0 +1,19 @@
+{
+  "name": "workdesk-chrome",
+  "private": true,
+  "version": "2.10.3",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "echo 'dist/ already holds the v2.10 frontend build (the readable frontend sources are v2.3); not rebuilding'",
+    "check:js": "echo skipped",
+    "backend": "cargo build --release --manifest-path backend/Cargo.toml"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "^3.11.174"
+  }
+}
