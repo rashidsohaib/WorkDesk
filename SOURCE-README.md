@@ -1,4 +1,4 @@
-# WorkDesk Chrome v2.10.3 – source
+# WorkDesk Chrome v2.10.4 – source
 
 What is in here
 * `backend/`  – Rust backend, **complete and current** (rebuilt from v2.3 + every backend change up to v2.10.1, plus the inline-image fix).

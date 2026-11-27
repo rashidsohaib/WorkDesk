@@ -204,13 +204,13 @@ pub fn raw_clear() {
     });
 }
 
-fn full_message(sess: &mut Sess, folder: &str, uid: u32) -> Result<(Vec<u8>, Vec<String>), String> {
+fn full_message(sess: &mut Sess, folder: &str, uid: u32, msgid: &str) -> Result<(Vec<u8>, Vec<String>), String> {
     sess.select(folder).map_err(err)?;
     let fetched = sess.uid_fetch(uid.to_string(), "(UID FLAGS BODY.PEEK[])").map_err(err)?;
     let m = fetched.iter().next().ok_or("This message no longer exists on the server")?;
     let body = m.body().ok_or("Gmail did not return the message body")?.to_vec();
     let flags = crate::imapx::normalize_flags(&m.flags().iter().map(|f| f.to_string()).collect::<Vec<_>>());
-    raw_put(folder, uid, &body);
+    raw_put_id(folder, uid, msgid, &body);
     Ok((body, flags))
 }
 
@@ -266,8 +266,8 @@ pub fn decode_message(raw: &[u8], folder: &str, uid: u32, thread_id: Option<Stri
 }
 
 /// Download and decode one message. Marks it as read on the server unless `mark_seen` is false.
-pub fn fetch_message(sess: &mut Sess, folder: &str, uid: u32, thread_id: Option<String>, mark_seen: bool) -> Result<MailDetail, String> {
-    let (raw, mut flags) = full_message(sess, folder, uid)?;
+pub fn fetch_message(sess: &mut Sess, folder: &str, uid: u32, thread_id: Option<String>, mark_seen: bool, msgid: &str) -> Result<MailDetail, String> {
+    let (raw, mut flags) = full_message(sess, folder, uid, msgid)?;
     if mark_seen && !flags.iter().any(|f| f.eq_ignore_ascii_case("Seen")) {
         sess.uid_store(uid.to_string(), "+FLAGS.SILENT (\\Seen)").map_err(err)?;
         flags.push("Seen".into());
@@ -284,7 +284,7 @@ pub fn attachment_from_raw(raw: &[u8], index: u32) -> Result<AttachmentData, Str
 }
 
 pub fn fetch_attachment(sess: &mut Sess, folder: &str, uid: u32, index: u32) -> Result<AttachmentData, String> {
-    let (raw, _) = full_message(sess, folder, uid)?;
+    let (raw, _) = full_message(sess, folder, uid, "")?;
     let parsed = mailparse::parse_mail(&raw).map_err(err)?;
     let mut w = Walk { text: String::new(), html: String::new(), attachments: Vec::new() };
     walk(&parsed, &mut w, true);

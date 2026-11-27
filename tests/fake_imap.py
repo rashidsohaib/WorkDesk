@@ -36,6 +36,10 @@ def seed():
         if i <= 6: add('INBOX', msgid, ['\\Seen'] if i % 3 == 0 else [])
         if i > 9: add('[Gmail]/Sent Mail', msgid, ['\\Seen'])
 seed()
+for i in (13, 14):
+    MSGS[1000 + i] = {'raw': mk(i, f'Subject {i}'), 'thrid': 500 + i, 'ts': 1793500000 + i * 60}
+    add('[Gmail]/Trash', 1000 + i)
+seed_done = True
 
 def fmt_flags(fl): return '(' + ' '.join(sorted(fl)) + ')'
 def parse_set(s, maxuid):

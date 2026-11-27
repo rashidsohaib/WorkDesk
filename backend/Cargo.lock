@@ -1400,7 +1400,7 @@ dependencies = [
 
 [[package]]
 name = "workdesk-chrome"
-version = "2.10.3"
+version = "2.10.4"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

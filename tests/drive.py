@@ -36,6 +36,16 @@ try:
     check('open warmed message: instant, no body download', dt < 0.2 and not any('BODY.PEEK[]' in l for l in after), f'{dt*1000:.0f}ms')
     check('decoded content', 'html body 1' in d['html'] and d['subject'] == 'Subject 1')
     check('Seen stored on server in background', any('STORE' in l and 'Seen' in l for l in after))
+    allm0 = rpc('list_page', username=U, folder='[Gmail]/All Mail', grouped=False, sort='date', desc=True, page=0, pageSize=50)['items']
+    a3 = [i for i in allm0 if i['subject'] == 'Subject 3'][0]
+    n2 = len(log_lines()); t = time.time(); d3 = rpc('get_message', username=U, folder='[Gmail]/All Mail', uid=a3['uid']); dt3 = time.time() - t
+    check('thread-view copy (All Mail uid) of an Inbox-warmed message opens from memory', dt3 < 0.2 and 'html body 3' in d3['html'] and not any('BODY.PEEK[]' in l for l in log_lines()[n2:]), f'{dt3*1000:.0f}ms')
+    rpc('sync_folder_now', username=U, folder='[Gmail]/Trash')
+    tr = rpc('list_page', username=U, folder='[Gmail]/Trash', grouped=False, sort='date', desc=True, page=0, pageSize=50)['items']
+    logins0 = sum(1 for l in log_lines() if ':: LOGIN' in l)
+    for it in tr: rpc('get_message', username=U, folder='[Gmail]/Trash', uid=it['uid'], markSeen=False)
+    logins1 = sum(1 for l in log_lines() if ':: LOGIN' in l)
+    check('uncached messages reuse a ready connection (no new login per message)', logins1 - logins0 <= 1, f'logins {logins0}->{logins1} for {len(tr)} messages')
     sent = rpc('list_page', username=U, folder='[Gmail]/Sent Mail', grouped=False, sort='date', desc=True, page=0, pageSize=50)['items']
     top = [i for i in sent if i['subject'] == 'Subject 12'][0]
     d2 = rpc('get_message', username=U, folder='[Gmail]/Sent Mail', uid=top['uid'], markSeen=False)

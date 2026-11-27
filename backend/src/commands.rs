@@ -77,6 +77,93 @@ fn finish(mut s: Sess) {
     let _ = s.logout();
 }
 
+// ---------------------------------------------------------- ready-to-use connections
+// Logging in to Gmail (TLS + LOGIN) takes seconds, far longer than fetching one message. Finished connections are
+// therefore kept for a few minutes and handed to the next request instead of being closed.
+
+static POOL: Mutex<Vec<(String, Sess, std::time::Instant)>> = Mutex::new(Vec::new());
+const POOL_KEEP: usize = 4;
+const POOL_IDLE: std::time::Duration = std::time::Duration::from_secs(240);
+
+fn take_pooled(account: &str) -> Result<Sess, String> {
+    loop {
+        let cand = {
+            let mut g = POOL.lock().unwrap_or_else(|p| p.into_inner());
+            g.iter().position(|(w, _, at)| w == account && at.elapsed() < POOL_IDLE).map(|i| g.remove(i))
+        };
+        let Some((_, mut s, _)) = cand else { break };
+        if s.noop().is_ok() {
+            return Ok(s);
+        }
+    }
+    open_session(account)
+}
+
+fn give_back(account: &str, s: Sess) {
+    let mut g = POOL.lock().unwrap_or_else(|p| p.into_inner());
+    let mut stale: Vec<Sess> = Vec::new();
+    let mut i = 0;
+    while i < g.len() {
+        if g[i].2.elapsed() >= POOL_IDLE {
+            stale.push(g.remove(i).1);
+        } else {
+            i += 1;
+        }
+    }
+    g.push((account.to_string(), s, std::time::Instant::now()));
+    while g.len() > POOL_KEEP {
+        stale.push(g.remove(0).1);
+    }
+    drop(g);
+    for s in stale {
+        finish_quiet(s);
+    }
+}
+
+fn pool_clear() {
+    let all: Vec<_> = POOL.lock().unwrap_or_else(|p| p.into_inner()).drain(..).collect();
+    for (_, s, _) in all {
+        finish_quiet(s);
+    }
+}
+
+/// Run `f` on a ready connection; a connection that worked is kept for the next request.
+fn with_session<T>(account: &str, f: impl FnOnce(&mut Sess) -> Result<T, String>) -> Result<T, String> {
+    let mut s = take_pooled(account)?;
+    let r = f(&mut s);
+    if r.is_ok() {
+        give_back(account, s);
+    } else {
+        finish_quiet(s);
+    }
+    r
+}
+
+// Messages being downloaded right now, so a click and a background download never fetch the same message twice.
+static INFLIGHT: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
+
+fn inflight_claim(folder: &str, uid: u32) -> bool {
+    let mut g = INFLIGHT.lock().unwrap_or_else(|p| p.into_inner());
+    if g.iter().any(|(f, u)| f == folder && *u == uid) {
+        return false;
+    }
+    g.push((folder.to_string(), uid));
+    true
+}
+
+fn inflight_release(folder: &str, uid: u32) {
+    INFLIGHT.lock().unwrap_or_else(|p| p.into_inner()).retain(|(f, u)| !(f == folder && *u == uid));
+}
+
+fn inflight_busy(folder: &str, uid: u32) -> bool {
+    INFLIGHT.lock().unwrap_or_else(|p| p.into_inner()).iter().any(|(f, u)| f == folder && *u == uid)
+}
+
+/// True when the message is in memory: under this label, or already downloaded under another label of the same Gmail message.
+fn raw_ready(folder: &str, uid: u32, msgid: &str) -> bool {
+    mail::raw_has(folder, uid) || mail::raw_alias(folder, uid, msgid)
+}
+
 // ------------------------------------------------------------------ credentials
 
 fn save_credentials(username: String, app_password: String) -> Result<(), String> {
@@ -87,6 +174,7 @@ fn save_credentials(username: String, app_password: String) -> Result<(), String
     }
     mail::raw_clear();
     details_clear();
+    pool_clear();
     crate::vault::set(&u, &p)
 }
 
@@ -372,12 +460,12 @@ async fn thread_messages(
     // Look the thread up on the server; if that fails (offline) the cached members are still shown.
     // `refresh: false` answers from the local cache at once; the UI asks again with `refresh: true` to catch up.
     if refresh.unwrap_or(true) {
-        if let Ok(mut sess) = open_session(&a) {
+        let _ = with_session(&a, |sess| {
             for f in &scope {
-                let _ = imapx::refresh_thread_in(&mut sess, &state.db, &a, f, &thrid);
+                let _ = imapx::refresh_thread_in(sess, &state.db, &a, f, &thrid);
             }
-            finish(sess);
-        }
+            Ok(())
+        });
     }
     let mut seen: HashSet<String> = HashSet::new();
     let mut out: Vec<MailRow> = Vec::new();
@@ -390,6 +478,10 @@ async fn thread_messages(
     if out.is_empty() {
         out = own.iter().map(MailRow::from).collect();
     }
+    // Start downloading the other messages of the conversation now, newest first, so expanding one is instant.
+    let upcoming: Vec<(String, u32, String)> =
+        out.iter().rev().take(12).map(|r| (r.folder.clone(), r.uid, r.gm_msgid.clone().unwrap_or_default())).collect();
+    prefetch_many(a.clone(), upcoming);
     Ok(out)
 }
 
@@ -441,10 +533,7 @@ fn mark_seen_bg(state: &AppState, a: &str, folder: &str, uid: u32) {
     let _ = state.db.apply_flag(a, std::slice::from_ref(&r), "Seen", true);
     let a = a.to_string();
     std::thread::spawn(move || {
-        if let Ok(mut s) = open_session(&a) {
-            let _ = imapx::set_flag(&mut s, std::slice::from_ref(&r), "Seen", true);
-            finish(s);
-        }
+        let _ = with_session(&a, |s| imapx::set_flag(s, std::slice::from_ref(&r), "Seen", true));
     });
 }
 
@@ -466,22 +555,33 @@ async fn get_message(state: State<'_, AppState>, username: String, folder: Strin
         }
         return Ok(d);
     }
-    if let Some(raw) = mail::raw_get(&folder, uid) {
-        let mut flags = row.as_ref().map(|r| r.flags.clone()).unwrap_or_default();
-        if let Ok(mut d) = mail::decode_message(&raw, &folder, uid, thread_id.clone(), flags.clone()) {
-            if mark && !has_seen(&flags) {
-                flags.push("Seen".into());
-                d.flags = flags;
-                mark_seen_bg(&state, &a, &folder, uid);
+    let msgid = row.as_ref().map(|r| r.gm_msgid.clone()).unwrap_or_default();
+    // A background download of this very message may be under way: wait for it rather than fetching it twice.
+    let mut waited = 0;
+    while inflight_busy(&folder, uid) && !mail::raw_has(&folder, uid) && waited < 400 {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        waited += 1;
+    }
+    if raw_ready(&folder, uid, &msgid) {
+        if let Some(raw) = mail::raw_get(&folder, uid) {
+            let mut flags = row.as_ref().map(|r| r.flags.clone()).unwrap_or_default();
+            if let Ok(mut d) = mail::decode_message(&raw, &folder, uid, thread_id.clone(), flags.clone()) {
+                if mark && !has_seen(&flags) {
+                    flags.push("Seen".into());
+                    d.flags = flags;
+                    mark_seen_bg(&state, &a, &folder, uid);
+                }
+                details_put(&a, &d);
+                return Ok(d);
             }
-            details_put(&a, &d);
-            return Ok(d);
         }
     }
-    let mut sess = open_session(&a)?;
-    let detail = mail::fetch_message(&mut sess, &folder, uid, thread_id, mark);
-    finish(sess);
-    let detail = detail?;
+    let claimed = inflight_claim(&folder, uid);
+    let fetched = with_session(&a, |s| mail::fetch_message(s, &folder, uid, thread_id.clone(), mark, &msgid));
+    if claimed {
+        inflight_release(&folder, uid);
+    }
+    let detail = fetched?;
     if mark {
         let _ = state.db.apply_flag(&a, &[MsgRef { folder: folder.clone(), uid }], "Seen", true);
     }
@@ -494,22 +594,32 @@ static PREFETCH_ACTIVE: AtomicUsize = AtomicUsize::new(0);
 /// Download a message ahead of the click (e.g. when the pointer rests on it). Returns at once.
 fn prefetch_message(state: State<'_, AppState>, username: String, folder: String, uid: u32) -> Result<(), String> {
     let a = acct(&username);
-    if mail::raw_has(&folder, uid) {
-        return Ok(());
-    }
     let msgid = state.db.rows_for_uids(&a, &folder, &[uid])?.first().map(|m| m.gm_msgid.clone()).unwrap_or_default();
-    if mail::raw_alias(&folder, uid, &msgid) || PREFETCH_ACTIVE.load(Ordering::SeqCst) >= 3 {
-        return Ok(());
+    prefetch_many(a, vec![(folder, uid, msgid)]);
+    Ok(())
+}
+
+/// Download messages in the background, one after another, on one ready connection.
+fn prefetch_many(a: String, items: Vec<(String, u32, String)>) {
+    let todo: Vec<(String, u32, String)> = items.into_iter().filter(|(f, u, m)| !raw_ready(f, *u, m)).collect();
+    if todo.is_empty() || PREFETCH_ACTIVE.load(Ordering::SeqCst) >= 3 {
+        return;
     }
     PREFETCH_ACTIVE.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
-        if let Ok(mut s) = open_session(&a) {
-            let _ = mail::prefetch(&mut s, &folder, uid, &msgid);
-            finish(s);
-        }
+        let _ = with_session(&a, |s| {
+            for (folder, uid, msgid) in &todo {
+                if raw_ready(folder, *uid, msgid) || !inflight_claim(folder, *uid) {
+                    continue;
+                }
+                let r = mail::prefetch(s, folder, *uid, msgid);
+                inflight_release(folder, *uid);
+                r?;
+            }
+            Ok(())
+        });
         PREFETCH_ACTIVE.fetch_sub(1, Ordering::SeqCst);
     });
-    Ok(())
 }
 
 // ------------------------------------------------- background download of the newest messages
@@ -570,7 +680,7 @@ fn warm_once(app: &AppHandle, a: &str) {
         }
     }
     if let Some(s) = sess {
-        finish(s);
+        give_back(a, s);
     }
 }
 
@@ -653,10 +763,7 @@ async fn get_attachment(username: String, folder: String, uid: u32, index: u32) 
             return Ok(a);
         }
     }
-    let mut sess = open_session(&acct(&username))?;
-    let r = mail::fetch_attachment(&mut sess, &folder, uid, index);
-    finish(sess);
-    r
+    with_session(&acct(&username), |s| mail::fetch_attachment(s, &folder, uid, index))
 }
 
 async fn set_flag(state: State<'_, AppState>, username: String, refs: Vec<MsgRef>, flag: String, enabled: bool) -> Result<(), String> {
@@ -817,6 +924,18 @@ async fn save_draft(app: AppHandle, req: SendRequest, replace_uid: Option<u32>, 
 /// Open the IMAP connection used for drafts ahead of time, so the first "Save draft" is quick.
 fn warm_connections(app: AppHandle, username: String) {
     let a = acct(&username);
+    {
+        let a = a.clone();
+        std::thread::spawn(move || {
+            let have = POOL.lock().map(|g| g.iter().filter(|(w, _, _)| *w == a).count()).unwrap_or(0);
+            for _ in have..2 {
+                match open_session(&a) {
+                    Ok(s) => give_back(&a, s),
+                    Err(_) => break,
+                }
+            }
+        });
+    }
     std::thread::spawn(move || {
         let st = app.state::<AppState>();
         let has = st.draft_sess.lock().map(|g| g.as_ref().map(|(w, _)| *w == a).unwrap_or(false)).unwrap_or(true);
