@@ -1,10 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=WorkDesk Chrome
-GenericName=Mail client
-Comment=WorkDesk — Design By Rashid (Gmail IMAP/SMTP client in a kiosk-mode Chrome)
-Exec=workdesk-chrome
+Comment=Gmail and website tabs in one window
+Exec=AppRun
 Icon=workdesk-chrome
+Categories=Network;Email;
+StartupWMClass=WorkDesk Chrome
 Terminal=false
-Categories=Office;Email;Network;
-StartupWMClass=workdesk-chrome

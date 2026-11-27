@@ -13,12 +13,17 @@ STORE = {f: {} for f, _ in FOLDERS}   # folder -> uid -> dict(msgid, flags)
 NEXT = {f: 1 for f, _ in FOLDERS}
 VALIDITY = 7
 
+NAMES = ['Aisha Rahman', 'Daniel Lim', 'Priya Nair', 'Marcus Tan', 'Sofia Alvarez', 'Kenji Watanabe', 'Hannah Wong', 'Omar Haddad', 'Grace Lee', 'Ivan Petrov', 'Nur Aina', 'Ben Carter', 'Mei Ling', 'Luca Rossi']
+SUBJ = ['Q4 budget review', 'Invoice 2026-1187 attached', 'Lunch on Thursday?', 'Project Falcon: status update', 'Re: Onboarding checklist', 'Meeting notes - 12 Nov', 'Contract renewal draft', 'Quarterly newsletter', 'Re: Server maintenance window', 'Photos from the offsite', 'Travel itinerary - Singapore', 'Re: Support ticket #4821', 'Welcome to the team!', 'Weekly report', ]
 def mk(i, subject, inline=False):
-    m = EmailMessage(); m['From'] = f'Sender {i} <s{i}@example.com>'; m['To'] = 'me@gmail.com'
+    DEMO = bool(os.environ.get('WD_DEMO'))
+    subject = SUBJ[(i - 1) % len(SUBJ)] if DEMO and subject.startswith('Subject') else subject
+    m = EmailMessage(); m['From'] = (f'{NAMES[(i - 1) % len(NAMES)]} <s{i}@example.com>' if DEMO else f'Sender {i} <s{i}@example.com>'); m['To'] = 'me@gmail.com'
     m['Subject'] = subject; m['Message-ID'] = f'<m{i}@example.com>'
     m['Date'] = format_datetime(datetime.datetime(2026, 11, 1, 10, 0, 0, tzinfo=datetime.timezone.utc) + datetime.timedelta(minutes=i))
-    m.set_content(f'plain body {i}')
-    m.add_alternative(f'<p>html body {i}</p>' + ('<img src="cid:ii_abc">' if inline else ''), subtype='html')
+    m.set_content(f'plain body {i}' if not DEMO else f'Hi Rashid,\n\nThanks for your message about this. Please find the details below and let me know if anything is unclear.\n\nBest regards')
+    body_html = f'<p>html body {i}</p>' if not DEMO else f'<p>Hi Rashid,</p><p>Thanks for your message about this. Please find the details below and let me know if anything is unclear.</p><ul><li>Item one is confirmed</li><li>Item two is pending approval</li></ul><p>Best regards,<br><b>{NAMES[(i - 1) % len(NAMES)]}</b></p>'
+    m.add_alternative(body_html + ('<img src="cid:ii_abc">' if inline else ''), subtype='html')
     if inline:
         m.get_payload()[1].add_related(b'\x89PNG\r\n\x1a\n' + b'0' * 300, 'image', 'png', cid='<ii_abc>', disposition='attachment', filename='image.png')
     return m.as_bytes()
